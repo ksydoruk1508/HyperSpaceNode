@@ -14,23 +14,6 @@ if ! command -v curl &> /dev/null; then
     sudo apt install curl -y
 fi
 
-# Проверка и установка aios-cli, если он не найден
-if ! command -v aios-cli &> /dev/null; then
-    echo -e "${YELLOW}aios-cli не найден. Хотите установить его автоматически? (y/n): ${NC}"
-    read -p "" install_aios
-    if [[ "$install_aios" =~ ^[Yy]$ ]]; then
-        echo -e "${BLUE}Устанавливаем aios-cli...${NC}"
-        curl -s https://download.hyper.space/api/install | bash
-        if ! command -v aios-cli &> /dev/null; then
-            echo -e "${RED}Не удалось установить aios-cli. Убедитесь, что система поддерживает установку и интернет-соединение работает.${NC}"
-            exit 1
-        fi
-        echo -e "${GREEN}aios-cli успешно установлен!${NC}"
-    else
-        echo -e "${YELLOW}Продолжаем без aios-cli. Убедитесь, что он будет установлен позже в процессе установки ноды.${NC}"
-    fi
-fi
-
 sleep 1
 
 echo -e "${GREEN}"
@@ -72,20 +55,19 @@ function download_node {
 
     echo -e "${BLUE}Обновляем и устанавливаем необходимые пакеты...${NC}"
     sudo apt-get update -y && sudo apt-get upgrade -y
-    sudo apt-get install wget make tar nano libssl3-dev build-essential unzip lz4 gcc git jq -y
+    sudo apt-get install wget make tar nano libssl3-dev build-essential unzip lz4 gcc git jq curl -y
 
-    packages="wget make tar nano libssl3-dev build-essential unzip lz4 gcc git jq"
-
-    check_and_install() {
-        if ! dpkg -s "$1" >/dev/null 2>&1; then
-            echo -e "${BLUE}Устанавливаем $1...${NC}"
-            sudo apt-get install "$1" -y
+    # Проверка и установка aios-cli
+    if ! command -v aios-cli &> /dev/null; then
+        echo -e "${BLUE}Устанавливаем aios-cli...${NC}"
+        curl -s https://download.hyper.space/api/install | bash
+        source ~/.bashrc  # Обновляем PATH после установки
+        if ! command -v aios-cli &> /dev/null; then
+            echo -e "${RED}Не удалось установить aios-cli. Убедитесь, что система поддерживает установку и интернет-соединение работает.${NC}"
+            exit 1
         fi
-    }
-
-    for package in $packages; do
-        check_and_install "$package"
-    done
+        echo -e "${GREEN}aios-cli успешно установлен!${NC}"
+    fi
 
     if [ -d "$HOME/.aios" ]; then
         echo -e "${BLUE}Удаляем существующую установку...${NC}"
