@@ -121,21 +121,33 @@ function download_node {
     echo -e "${BLUE}Запускаем ноду в фоновом режиме с помощью nohup...${NC}"
     nohup bash -c 'aios-cli start' > $HOME/hyperspacenode.log 2>&1 &
 
-    # Проверка, что демон запущен
+    # Проверка статуса демона
     sleep 15  # Увеличенная задержка для запуска
     if ! pgrep -f "aios-cli start" > /dev/null; then
         echo -e "${RED}Ошибка: Нода (демон aios-cli) не запущена. Проверяйте логи в $HOME/hyperspacenode.log.${NC}"
+        echo -e "${YELLOW}Пытаемся диагностировать проблему...${NC}"
+        # Логируем состояние для диагностики
+        echo "Состояние процессов aios-cli:" > $HOME/hyperspacenode_diagnostic.log
+        ps aux | grep aios-cli >> $HOME/hyperspacenode_diagnostic.log 2>/dev/null
+        echo "Блокировка файла aios-cli:" >> $HOME/hyperspacenode_diagnostic.log
+        lsof 2>/dev/null | grep aios-cli >> $HOME/hyperspacenode_diagnostic.log 2>/dev/null
         # Пытаемся перезапустить, если процесс не найден
         pkill -9 -f "aios-cli"
         sleep 5
         nohup bash -c 'aios-cli start' > $HOME/hyperspacenode.log 2>&1 &
         sleep 15
         if ! pgrep -f "aios-cli start" > /dev/null; then
-            echo -e "${RED}Повторный запуск демона не удался. Проверьте логи в $HOME/hyperspacenode.log и выполните `aios-cli start` вручную.${NC}"
+            echo -e "${RED}Повторный запуск демона не удался. Проверьте логи в $HOME/hyperspacenode.log и диагностику в $HOME/hyperspacenode_diagnostic.log.${NC}"
+            echo -e "${YELLOW}Попробуйте вручную выполнить `aios-cli start` и проверить статус с помощью `aios-cli status` (если доступно).${NC}"
             exit 1
         fi
     fi
     echo -e "${GREEN}Нода успешно запущена!${NC}"
+
+    # Проверка статуса узла после запуска
+    if ! aios-cli status 2>/dev/null | grep -q "running"; then
+        echo -e "${YELLOW}Предупреждение: Узел может не быть полностью активен. Проверьте `aios-cli status` и логи.${NC}"
+    fi
 
     while true; do
         echo -e "${BLUE}Устанавливаем модель...${NC}"
