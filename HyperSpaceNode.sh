@@ -55,13 +55,15 @@ function download_node {
 
     echo -e "${BLUE}Обновляем и устанавливаем необходимые пакеты...${NC}"
     sudo apt-get update -y && sudo apt-get upgrade -y
-    sudo apt-get install wget make tar nano libssl3-dev build-essential unzip lz4 gcc git jq curl -y
+    sudo apt-get install wget make tar nano libssl-dev build-essential unzip lz4 gcc git jq curl -y
 
     # Проверка и установка aios-cli
     if ! command -v aios-cli &> /dev/null; then
         echo -e "${BLUE}Устанавливаем aios-cli...${NC}"
         curl -s https://download.hyper.space/api/install | bash
         source ~/.bashrc  # Обновляем PATH после установки
+        export PATH=$PATH:$HOME/.aios  # Явно добавляем путь к aios-cli
+        sleep 2  # Задержка для обновления PATH
         if ! command -v aios-cli &> /dev/null; then
             echo -e "${RED}Не удалось установить aios-cli. Убедитесь, что система поддерживает установку и интернет-соединение работает.${NC}"
             exit 1
