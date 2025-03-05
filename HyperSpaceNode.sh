@@ -57,6 +57,17 @@ function download_node {
     sudo apt-get update -y && sudo apt-get upgrade -y
     sudo apt-get install wget make tar nano libssl-dev build-essential unzip lz4 gcc git jq curl -y
 
+    # Проверка виртуализации (для Intel, для AMD аналогично)
+    if ! grep -E 'vmx|svm' /proc/cpuinfo > /dev/null; then
+        echo -e "${YELLOW}Предупреждение: Аппаратная виртуализация (VT-x или AMD-V) не обнаружена. Это может вызвать проблемы с работой aios-cli.${NC}"
+        echo -e "${YELLOW}Свяжитесь с вашим провайдером VPS (например, Contabo), чтобы включить вложенную виртуализацию (nested virtualization).${NC}"
+        read -p "Продолжить установку? (y/n): " continue_install
+        if [[ ! "$continue_install" =~ ^[Yy]$ ]]; then
+            echo -e "${BLUE}Установка отменена пользователем.${NC}"
+            exit 1
+        fi
+    fi
+
     # Проверка и установка aios-cli
     if ! command -v aios-cli &> /dev/null; then
         echo -e "${BLUE}Устанавливаем aios-cli...${NC}"
@@ -71,11 +82,12 @@ function download_node {
         echo -e "${GREEN}aios-cli успешно установлен!${NC}"
     fi
 
+    # Очистка всех процессов и файлов aios-cli перед установкой
     if [ -d "$HOME/.aios" ]; then
-        echo -e "${BLUE}Удаляем существующую установку...${NC}"
-        sudo rm -rf "$HOME/.aios"
-        pkill -f "aios-cli"  # Убиваем все процессы aios-cli перед удалением
+        echo -e "${BLUE}Очищаем существующие процессы и файлы...${NC}"
+        pkill -f "aios-cli"  # Убиваем все процессы aios-cli
         aios-cli kill 2>/dev/null || echo -e "${YELLOW}Предыдущий процесс aios-cli не найден или уже завершён.${NC}"
+        sudo rm -rf "$HOME/.aios"
     fi
 
     while true; do
