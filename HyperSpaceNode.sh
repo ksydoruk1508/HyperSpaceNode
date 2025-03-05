@@ -74,7 +74,8 @@ function download_node {
     if [ -d "$HOME/.aios" ]; then
         echo -e "${BLUE}Удаляем существующую установку...${NC}"
         sudo rm -rf "$HOME/.aios"
-        aios-cli kill
+        pkill -f "aios-cli"  # Убиваем все процессы aios-cli перед удалением
+        aios-cli kill 2>/dev/null || echo -e "${YELLOW}Предыдущий процесс aios-cli не найден или уже завершён.${NC}"
     fi
 
     while true; do
@@ -100,6 +101,22 @@ function download_node {
     echo -e "${BLUE}Запускаем ноду в фоновом режиме с помощью nohup...${NC}"
     nohup bash -c 'aios-cli start' > $HOME/hyperspacenode.log 2>&1 &
 
+    # Проверка, что демон запущен
+    sleep 5  # Даём время на запуск
+    if ! pgrep -f "aios-cli start" > /dev/null; then
+        echo -e "${RED}Ошибка: Нода (демон aios-cli) не запущена. Проверяйте логи в $HOME/hyperspacenode.log.${NC}"
+        # Пытаемся перезапустить, если процесс не найден
+        pkill -f "aios-cli"
+        sleep 2
+        nohup bash -c 'aios-cli start' > $HOME/hyperspacenode.log 2>&1 &
+        sleep 5
+        if ! pgrep -f "aios-cli start" > /dev/null; then
+            echo -e "${RED}Повторный запуск демона не удался. Проверьте логи в $HOME/hyperspacenode.log и выполните `aios-cli start` вручную.${NC}"
+            exit 1
+        fi
+    fi
+    echo -e "${GREEN}Нода успешно запущена!${NC}"
+
     while true; do
         echo -e "${BLUE}Устанавливаем модель...${NC}"
         aios-cli models add hf:TheBloke/phi-2-GGUF:phi-2.Q4_K_M.gguf 2>&1 | tee $HOME/hyperspacemodel_download.log
@@ -107,6 +124,9 @@ function download_node {
         if grep -q "Download complete" $HOME/hyperspacemodel_download.log; then
             echo -e "${GREEN}Модель была установлена.${NC}"
             break
+        elif grep -q "Failed to connect to local daemon" $HOME/hyperspacemodel_download.log; then
+            echo -e "${RED}Ошибка: Не удалось подключиться к локальному демону. Проверяйте логи в $HOME/hyperspacenode.log и попробуйте перезапустить ноду.${NC}"
+            exit 1
         else
             echo -e "${YELLOW}Сервер установки модели недоступен, повторим через 30 секунд...${NC}"
             sleep 30
