@@ -55,13 +55,7 @@ function download_node {
 
     echo -e "${BLUE}Обновляем и устанавливаем необходимые пакеты...${NC}"
     sudo apt-get update -y && sudo apt-get upgrade -y
-    sudo apt-get install wget make tar nano libssl-dev build-essential unzip lz4 gcc git jq curl -y
-
-    # Убедимся, что fuser установлен для проверки блокировки файла
-    if ! command -v fuser &> /dev/null; then
-        echo -e "${BLUE}Устанавливаем fuser (psmisc)...${NC}"
-        sudo apt install psmisc -y
-    fi
+    sudo apt-get install wget make tar nano libssl-dev build-essential unzip lz4 gcc git jq curl psmisc lsof -y
 
     # Проверка и установка aios-cli
     if ! command -v aios-cli &> /dev/null; then
@@ -79,17 +73,16 @@ function download_node {
 
     # Очистка всех процессов и файлов aios-cli перед установкой
     echo -e "${BLUE}Очищаем существующие процессы и файлы...${NC}"
-    pkill -f "aios-cli"  # Убиваем все процессы aios-cli
-    aios-cli kill 2>/dev/null || echo -e "${YELLOW}Предыдущий процесс aios-cli не найден или уже завершён.${NC}"
-    # Принудительно убить все процессы nohup, связанные с aios-cli
-    pkill -f "nohup.*aios-cli" 2>/dev/null || echo -e "${YELLOW}Нет процессов nohup для aios-cli.${NC}"
+    # Принудительно убиваем все процессы aios-cli, включая фоновые и nohup
+    pkill -9 -f "aios-cli" 2>/dev/null || echo -e "${YELLOW}Не найдено процессов aios-cli для завершения.${NC}"
+    pkill -9 -f "nohup.*aios-cli" 2>/dev/null || echo -e "${YELLOW}Нет процессов nohup для aios-cli.${NC}"
     # Проверка и снятие блокировки файла aios-cli с помощью fuser
     AIOS_CLI_PATH="$HOME/.aios/aios-cli"
     if [ -f "$AIOS_CLI_PATH" ]; then
         if fuser "$AIOS_CLI_PATH" 2>/dev/null | grep -q .; then
             echo -e "${YELLOW}Файл aios-cli заблокирован. Снимаем блокировку...${NC}"
             fuser -k "$AIOS_CLI_PATH" 2>/dev/null || echo -e "${RED}Не удалось снять блокировку файла aios-cli.${NC}"
-            sleep 3  # Дополнительная задержка для освобождения файла
+            sleep 5  # Увеличенная задержка для освобождения файла
         fi
     fi
     # Проверка с lsof (с подавлением ошибок и диагностикой)
@@ -102,6 +95,7 @@ function download_node {
     else
         echo -e "${YELLOW}Нет заблокированных файлов aios-cli или возникла ошибка lsof.${NC}"
     fi
+    # Удаляем директорию, чтобы исключить остатки старых файлов
     sudo rm -rf "$HOME/.aios"
 
     while true; do
@@ -128,14 +122,14 @@ function download_node {
     nohup bash -c 'aios-cli start' > $HOME/hyperspacenode.log 2>&1 &
 
     # Проверка, что демон запущен
-    sleep 10  # Увеличенная задержка для запуска
+    sleep 15  # Увеличенная задержка для запуска
     if ! pgrep -f "aios-cli start" > /dev/null; then
         echo -e "${RED}Ошибка: Нода (демон aios-cli) не запущена. Проверяйте логи в $HOME/hyperspacenode.log.${NC}"
         # Пытаемся перезапустить, если процесс не найден
-        pkill -f "aios-cli"
+        pkill -9 -f "aios-cli"
         sleep 5
         nohup bash -c 'aios-cli start' > $HOME/hyperspacenode.log 2>&1 &
-        sleep 10
+        sleep 15
         if ! pgrep -f "aios-cli start" > /dev/null; then
             echo -e "${RED}Повторный запуск демона не удался. Проверьте логи в $HOME/hyperspacenode.log и выполните `aios-cli start` вручную.${NC}"
             exit 1
