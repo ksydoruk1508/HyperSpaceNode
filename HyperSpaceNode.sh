@@ -55,7 +55,7 @@ function download_node {
 
     echo -e "${BLUE}Обновляем и устанавливаем необходимые пакеты...${NC}"
     sudo apt-get update -y && sudo apt-get upgrade -y
-    sudo apt-get install wget make tar nano libssl-dev build-essential unzip lz4 gcc git jq curl psmisc lsof -y
+    sudo apt-get install wget make tar nano libssl-dev build-essential unzip lz4 gcc git jq curl psmisc lsof strace -y
 
     # Проверка и установка aios-cli
     if ! command -v aios-cli &> /dev/null; then
@@ -82,7 +82,7 @@ function download_node {
         if fuser "$AIOS_CLI_PATH" 2>/dev/null | grep -q .; then
             echo -e "${YELLOW}Файл aios-cli заблокирован. Снимаем блокировку...${NC}"
             fuser -k "$AIOS_CLI_PATH" 2>/dev/null || echo -e "${RED}Не удалось снять блокировку файла aios-cli.${NC}"
-            sleep 5  # Увеличенная задержка для освобождения файла
+            sleep 10  # Увеличенная задержка для освобождения файла
         fi
     fi
     # Проверка с lsof (с подавлением ошибок и диагностикой)
@@ -94,6 +94,22 @@ function download_node {
         done
     else
         echo -e "${YELLOW}Нет заблокированных файлов aios-cli или возникла ошибка lsof.${NC}"
+    fi
+    # Проверка блокировок на уровне ядра (если доступно)
+    if command -v lslocks &> /dev/null; then
+        if lslocks | grep -q "$AIOS_CLI_PATH"; then
+            echo -e "${YELLOW}Найдена блокировка файла aios-cli на уровне ядра. Пытаемся снять...${NC}"
+            fuser -k "$AIOS_CLI_PATH" 2>/dev/null || echo -e "${RED}Не удалось снять блокировку на уровне ядра.${NC}"
+            sleep 5
+        fi
+    fi
+    # Дополнительная диагностика с strace
+    echo -e "${YELLOW}Проверяем блокировку файла aios-cli с помощью strace...${NC}"
+    strace -o $HOME/strace_aios-cli.log aios-cli start 2>&1 >/dev/null || echo -e "${RED}Ошибка при выполнении strace.${NC}"
+    if grep -q "Text file busy" $HOME/strace_aios-cli.log; then
+        echo -e "${RED}Файл aios-cli заблокирован. Пытаемся устранить проблему...${NC}"
+        pkill -9 -f "aios-cli"
+        sleep 10
     fi
     # Удаляем директорию, чтобы исключить остатки старых файлов
     sudo rm -rf "$HOME/.aios"
@@ -118,11 +134,11 @@ function download_node {
 
     eval "$(cat ~/.bashrc | tail -n +10)"
 
-    echo -e "${BLUE}Запускаем ноду в фоновом режиме с помощью nohup...${NC}"
-    nohup bash -c 'aios-cli start' > $HOME/hyperspacenode.log 2>&1 &
+    echo -e "${BLUE}Запускаем ноду напрямую (без nohup)...${NC}"
+    aios-cli start > $HOME/hyperspacenode.log 2>&1 &
 
     # Проверка статуса демона
-    sleep 15  # Увеличенная задержка для запуска
+    sleep 20  # Увеличенная задержка для запуска
     if ! pgrep -f "aios-cli start" > /dev/null; then
         echo -e "${RED}Ошибка: Нода (демон aios-cli) не запущена. Проверяйте логи в $HOME/hyperspacenode.log.${NC}"
         echo -e "${YELLOW}Пытаемся диагностировать проблему...${NC}"
@@ -131,11 +147,16 @@ function download_node {
         ps aux | grep aios-cli >> $HOME/hyperspacenode_diagnostic.log 2>/dev/null
         echo "Блокировка файла aios-cli:" >> $HOME/hyperspacenode_diagnostic.log
         lsof 2>/dev/null | grep aios-cli >> $HOME/hyperspacenode_diagnostic.log 2>/dev/null
-        # Пытаемся перезапустить, если процесс не найден
+        echo "Блокировки на уровне ядра:" >> $HOME/hyperspacenode_diagnostic.log
+        lslocks 2>/dev/null | grep "$AIOS_CLI_PATH" >> $HOME/hyperspacenode_diagnostic.log 2>/dev/null
+        echo "Результат strace:" >> $HOME/hyperspacenode_diagnostic.log
+        cat $HOME/strace_aios-cli.log >> $HOME/hyperspacenode_diagnostic.log 2>/dev/null
+        # Пытаемся перезапустить вручную с диагностикой
         pkill -9 -f "aios-cli"
-        sleep 5
-        nohup bash -c 'aios-cli start' > $HOME/hyperspacenode.log 2>&1 &
-        sleep 15
+        sleep 10
+        echo -e "${YELLOW}Пытаемся запустить демон вруч manually...${NC}"
+        aios-cli start >> $HOME/hyperspacenode.log 2>&1 &
+        sleep 20
         if ! pgrep -f "aios-cli start" > /dev/null; then
             echo -e "${RED}Повторный запуск демона не удался. Проверьте логи в $HOME/hyperspacenode.log и диагностику в $HOME/hyperspacenode_diagnostic.log.${NC}"
             echo -e "${YELLOW}Попробуйте вручную выполнить `aios-cli start` и проверить статус с помощью `aios-cli status` (если доступно).${NC}"
@@ -275,7 +296,7 @@ function delete_node {
     aios-cli kill
     aios-cli models remove hf:TheBloke/phi-2-GGUF:phi-2.Q4_K_M.gguf
     sudo rm -rf $HOME/.aios
-    sudo rm -f $HOME/hyperspacenode.log $HOME/points_monitor_hyperspace.log $HOME/points_monitor_hyperspace.sh
+    sudo rm -f $HOME/hyperspacenode.log $HOME/points_monitor_hyperspace.log $HOME/points_monitor_hyperspace.sh $HOME/hyperspacenode_diagnostic.log $HOME/strace_aios-cli.log
 
     echo -e "${GREEN}Нода была удалена.${NC}"
     main_menu
