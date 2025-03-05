@@ -75,8 +75,16 @@ function download_node {
     echo -e "${BLUE}Очищаем существующие процессы и файлы...${NC}"
     pkill -f "aios-cli"  # Убиваем все процессы aios-cli
     aios-cli kill 2>/dev/null || echo -e "${YELLOW}Предыдущий процесс aios-cli не найден или уже завершён.${NC}"
-    # Убедимся, что файл aios-cli не заблокирован
-    lsof | grep aios-cli | awk '{print $2}' | xargs -r kill -9 2>/dev/null || echo -e "${YELLOW}Нет заблокированных файлов aios-cli.${NC}"
+    # Убедимся, что файл aios-cli не заблокирован (с подавлением ошибок и диагностикой)
+    if lsof 2>/dev/null | grep -q aios-cli; then
+        PIDS=$(lsof 2>/dev/null | grep aios-cli | awk '{print $2}' | uniq)
+        for PID in $PIDS; do
+            echo -e "${YELLOW}Найден процесс, блокирующий aios-cli (PID: $PID). Убиваем...${NC}"
+            kill -9 $PID 2>/dev/null || echo -e "${RED}Не удалось убить процесс с PID $PID.${NC}"
+        done
+    else
+        echo -e "${YELLOW}Нет заблокированных файлов aios-cli или возникла ошибка lsof.${NC}"
+    fi
     sudo rm -rf "$HOME/.aios"
 
     while true; do
