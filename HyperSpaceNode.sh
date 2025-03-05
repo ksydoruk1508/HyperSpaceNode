@@ -14,10 +14,21 @@ if ! command -v curl &> /dev/null; then
     sudo apt install curl -y
 fi
 
-# Проверка наличия aios-cli (если нужно, можно добавить установку, если она есть)
+# Проверка и установка aios-cli, если он не найден
 if ! command -v aios-cli &> /dev/null; then
-    echo -e "${RED}aios-cli не найден. Убедитесь, что он установлен.${NC}"
-    exit 1
+    echo -e "${YELLOW}aios-cli не найден. Хотите установить его автоматически? (y/n): ${NC}"
+    read -p "" install_aios
+    if [[ "$install_aios" =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}Устанавливаем aios-cli...${NC}"
+        curl -s https://download.hyper.space/api/install | bash
+        if ! command -v aios-cli &> /dev/null; then
+            echo -e "${RED}Не удалось установить aios-cli. Убедитесь, что система поддерживает установку и интернет-соединение работает.${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}aios-cli успешно установлен!${NC}"
+    else
+        echo -e "${YELLOW}Продолжаем без aios-cli. Убедитесь, что он будет установлен позже в процессе установки ноды.${NC}"
+    fi
 fi
 
 sleep 1
